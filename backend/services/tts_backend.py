@@ -1154,6 +1154,17 @@ _REGISTRY: dict[str, type[TTSBackend]] = {
 }
 
 
+# ── ENGINE-06 last-error cache ─────────────────────────────────────────────
+#
+# Populated by `list_backends()` whenever a backend's `is_available()`
+# returns ok=False or raises an exception. Cleared per-id when the same
+# backend reports ok=True. Surfaced via the `last_error` field on each
+# registry entry so the Compat Matrix UI (Plan 02-04) can show the most
+# recent failure even between calls — and prove which engine is the source
+# of a hung Settings panel.
+_LAST_ERRORS: dict[str, str] = {}
+
+
 
 # Short install hints surfaced as tooltips on the Settings → Engines UI.
 # Helps users understand what pip package to install and where.
@@ -1172,17 +1183,61 @@ _INSTALL_HINTS: dict[str, str] = {
 
 def list_backends() -> list[dict]:
     """Enumerate every registered backend with its availability state.
-    Shape matches what a Settings-UI engine picker wants.
+
+    Per-entry shape (ENGINE-05 + ENGINE-06):
+
+        {
+          "id":            str,
+          "display_name":  str,
+          "available":     bool,
+          "reason":        Optional[str],          # message when not available
+          "install_hint":  Optional[str],
+          "last_error":    Optional[str],          # cached most-recent failure
+          "isolation_mode": "in-process" | "subprocess",
+        }
+
+    Guarantees (ENGINE-05): a backend whose `is_available()` raises does
+    NOT prevent the list from returning. The exception is captured into
+    the `reason`/`last_error` fields for that one entry and every other
+    backend is still listed normally.
     """
-    out = []
+    # Detect subprocess-isolated backends via a duck-typed marker rather
+    # than `issubclass(cls, SubprocessBackend)`. Test fixtures (e.g. the
+    # token_resolver suite) purge `sys.modules["services"]` between tests
+    # for DB isolation, which produces a re-imported SubprocessBackend
+    # class object that no longer == the one this test's subclasses closed
+    # over. The marker attribute is set on SubprocessBackend itself, so
+    # subclasses inherit it through any re-import path.
+    out: list[dict] = []
     for bid, cls in _REGISTRY.items():
-        ok, msg = cls.is_available()
+        try:
+            ok, msg = cls.is_available()
+        except Exception as exc:
+            ok = False
+            msg = f"{type(exc).__name__}: {exc}"
+            logger.warning(
+                "list_backends: %s.is_available() raised — degrading "
+                "gracefully so the picker still renders: %s",
+                bid, msg,
+            )
+        if ok:
+            _LAST_ERRORS.pop(bid, None)
+        else:
+            _LAST_ERRORS[bid] = msg
+        # ENGINE-06 isolation_mode: duck-typed marker for SubprocessBackend
+        # subclasses (see services.subprocess_backend.SubprocessBackend).
+        if getattr(cls, "_is_subprocess_isolated", False):
+            isolation = "subprocess"
+        else:
+            isolation = "in-process"
         out.append({
             "id": bid,
             "display_name": cls.display_name,
             "available": ok,
             "reason": None if ok else msg,
             "install_hint": _INSTALL_HINTS.get(bid),
+            "last_error": _LAST_ERRORS.get(bid),
+            "isolation_mode": isolation,
         })
     return out
 
