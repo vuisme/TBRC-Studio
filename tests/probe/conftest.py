@@ -49,6 +49,18 @@ def probe_report(request: pytest.FixtureRequest) -> ProbeRecorder:
     return request.config._probe_recorder  # type: ignore[attr-defined]
 
 
+@pytest.fixture(scope="session")
+def boot_capture() -> dict:
+    """Boot the backend ONCE (fresh data dir, subprocess-isolated) and share the
+    rich capture — first-run endpoints, engine/ASR matrices, loopback-reject
+    status, and the OpenAPI inventory — across the engine/security/coverage
+    probes so the suite pays for only one boot."""
+    from . import env
+
+    with env.fresh_data_dir() as data_dir:
+        return env.capture_first_run(data_dir)
+
+
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
     recorder: ProbeRecorder | None = getattr(session.config, "_probe_recorder", None)
     if not recorder or not recorder.outcomes:

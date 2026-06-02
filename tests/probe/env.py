@@ -49,6 +49,25 @@ def fresh_data_dir(tmp_path: str | os.PathLike | None = None):
             shutil.rmtree(created, ignore_errors=True)
 
 
+@contextlib.contextmanager
+def seeded_data_dir():
+    """Yield a temp data dir pre-populated with the checked-in regression fixture
+    (tests/fixtures/omnivoice_data) — for testing the alembic UPGRADE path on
+    existing user data, not a clean first run."""
+    import shutil
+    import tempfile
+
+    fixture = _REPO_ROOT / "tests" / "fixtures" / "omnivoice_data"
+    if not fixture.exists():
+        raise RuntimeError(f"regression fixture missing at {fixture}")
+    tmp = tempfile.mkdtemp(prefix="probe-seeded-")
+    try:
+        shutil.copytree(fixture, tmp, dirs_exist_ok=True)
+        yield Path(tmp)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def capture_first_run(data_dir: str | os.PathLike, timeout: float = 180.0) -> dict:
     """Boot the backend against ``data_dir`` in a subprocess and return the
     captured first-run context (endpoint status/body/latency + on-disk

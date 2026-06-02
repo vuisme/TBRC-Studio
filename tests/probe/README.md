@@ -19,6 +19,31 @@ JUDGE  (deterministic code + metrics)    ◀──renders the verdict
   `advisory` lane. Letting an agent both *act* and *judge* produces false passes
   (green tests on broken software), which is worse than no test.
 
+## Feature coverage (specs)
+
+Beyond the layer skeleton, the suite covers these features — one `*.probe.yaml`
+spec each, run against the real app where possible (a single subprocess boot is
+shared across the backend-touching specs):
+
+| Spec | Layer | Verifies |
+|------|-------|----------|
+| `first_run` | env | fresh-dir boot: health + DB init + endpoints |
+| `migration` | env | alembic UPGRADE on existing `omnivoice_data` fixture (backward-compat) |
+| `engines` | engine | TTS/ASR registry: active engine available, every unavailable engine explains why (11 TTS / 7 ASR backends) |
+| `security` | security | system routes reject non-loopback origins (403) |
+| `dictation` | dictation | streaming-ASR WebSocket `/ws/transcribe` registered + accepts loopback handshake |
+| `tts_smoke` / `voice_clone` / `voice_design` | media | audio-correctness ladder (decode/duration/not-silent/clipping/WER) + speaker-sim (clone) |
+| `dub_export` | dubbing | segment duration-ratio, SRT/VTT well-formed, export-archive contents, output language-ID (advisory) |
+| `i18n_parity` | i18n | locale files valid JSON (gate); orphan-keys + coverage (advisory) |
+| `desktop_smoke` | desktop | Tauri config integrity (version parity, dev/build wiring, bundled bins, CSP) |
+| `launchpad` | web | UI render via Playwright Driver (FakePage offline) |
+| `coverage_critic` | meta | every declared layer still has a spec (drift gate) + API-surface inventory (advisory) |
+
+> The i18n orphan-key check **surfaced a real bug**: all 20 non-`en` locales carry
+> `gallery.cat_*` (and some `bootstrap.lines`) keys absent from the `en`
+> reference. It's reported in the advisory lane (non-blocking) rather than gating,
+> since the fix is a product change.
+
 ## Layers
 
 | Layer | Module | Status | What it does |

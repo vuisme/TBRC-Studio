@@ -60,7 +60,7 @@ class Spec:
 def _build_registry() -> dict[str, Callable[..., JudgeResult]]:
     """Map YAML judge keys → judge callables. Imported lazily to avoid the
     spec ⇄ judges circular import (judges import JudgeResult from here)."""
-    from .judges import audio, desktop, http, speaker, transcription
+    from .judges import audio, coverage, desktop, dictation, dubbing, engine, http, i18n, speaker, transcription
     from .judges import web as web_judges
 
     return {
@@ -89,6 +89,27 @@ def _build_registry() -> dict[str, Callable[..., JudgeResult]]:
         "config_eq": desktop.config_eq,
         "config_contains": desktop.config_contains,
         "csp_allows": desktop.csp_allows,
+        # L4 dubbing
+        "segments_duration_ratio": dubbing.segments_duration_ratio,
+        "srt_well_formed": dubbing.srt_well_formed,
+        "vtt_well_formed": dubbing.vtt_well_formed,
+        "archive_has": dubbing.archive_has,
+        "output_language_is": dubbing.output_language_is,
+        # i18n / localization
+        "locale_valid_json": i18n.locale_valid_json,
+        "locale_no_orphan_keys": i18n.locale_no_orphan_keys,
+        "locale_coverage": i18n.locale_coverage,
+        # engine matrix
+        "engines_present": engine.engines_present,
+        "active_engine_available": engine.active_engine_available,
+        "engine_available": engine.engine_available,
+        "unavailable_engines_explained": engine.unavailable_engines_explained,
+        # coverage critic
+        "layers_have_specs": coverage.layers_have_specs,
+        "coverage_report": coverage.coverage_report,
+        # dictation (streaming-ASR WebSocket)
+        "ws_endpoint_registered": dictation.ws_endpoint_registered,
+        "ws_handshake_ok": dictation.ws_handshake_ok,
     }
 
 
