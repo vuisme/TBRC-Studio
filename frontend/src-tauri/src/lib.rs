@@ -255,6 +255,7 @@ pub fn run() {
             commands::simulate_paste,
             commands::set_tray_recording,
             commands::quit_app,
+            commands::save_text_file,
             commands::get_dictation_shortcut,
             commands::set_dictation_shortcut,
             commands::get_launch_as_widget,

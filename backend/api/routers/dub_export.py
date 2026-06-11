@@ -873,6 +873,12 @@ def _pick_subtitle_text(seg: dict, dual: bool) -> str:
     return f"{translated}\n<i>{original}</i>"
 
 
+# Subtitles deliberately have no ?save_path= variant: they're small text
+# bodies, so the Tauri side fetches them raw and writes the file itself via
+# the save_text_file command — the OS save dialog is the write authorization
+# (#309). The frontend's JSON-envelope save flow stays for binary exports.
+
+
 @router.get("/dub/srt/{job_id}")
 @router.get("/dub/srt/{job_id}/{filename}")
 async def dub_export_srt(job_id: str, dual: bool = False):
@@ -896,10 +902,11 @@ async def dub_export_srt(job_id: str, dual: bool = False):
     srt_content = "\n".join(srt_lines)
     base_name = os.path.splitext(job.get('filename', 'video'))[0]
     suffix = "_dual" if dual else ""
+    dl_name = f"subtitles_{base_name}{suffix}.srt"
     return Response(
         content=srt_content,
         media_type="text/plain",
-        headers={"Content-Disposition": f'attachment; filename="subtitles_{base_name}{suffix}.srt"'},
+        headers={"Content-Disposition": f'attachment; filename="{dl_name}"'},
     )
 
 def _format_vtt_time(seconds):
@@ -932,10 +939,11 @@ async def dub_export_vtt(job_id: str, dual: bool = False):
     vtt_content = "\n".join(vtt_lines)
     base_name = os.path.splitext(job.get('filename', 'video'))[0]
     suffix = "_dual" if dual else ""
+    dl_name = f"subtitles_{base_name}{suffix}.vtt"
     return Response(
         content=vtt_content,
         media_type="text/vtt",
-        headers={"Content-Disposition": f'attachment; filename="subtitles_{base_name}{suffix}.vtt"'},
+        headers={"Content-Disposition": f'attachment; filename="{dl_name}"'},
     )
 
 
