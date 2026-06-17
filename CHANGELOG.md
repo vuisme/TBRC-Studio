@@ -8,7 +8,26 @@ The bundled TTS model package (`pyproject.toml`) is versioned independently.
 
 ## [Unreleased]
 
-_Nothing yet — `main` is at v0.3.6 + 1 patch. New work lands here._
+### Fixed
+
+- **Audio playback on Linux Firefox/Chrome and Android Chrome.** Two separate
+  root causes both masquerade as "the play button doesn't work" on non-macOS
+  browsers — and both are invisible when developing on macOS, which is why they
+  shipped. (1) The backend served `.wav` / `.flac` with Python's default
+  `audio/x-wav` / `audio/x-flac` (vendor-experimental, never IANA-registered);
+  macOS CoreAudio MIME-sniffs leniently and plays anyway, but Linux FFmpeg and
+  Android ExoPlayer strictly honor the declared type and prompt to download.
+  Fixed by registering the canonical `audio/wav` / `audio/flac` types before
+  any `StaticFiles` mount. (2) WaveSurfer's `AudioContext` is constructed at
+  component-mount time — i.e. before any user gesture — so on Linux FF/Chrome
+  and Android Chrome it stays `suspended`, `decodeAudioData` hangs, the
+  `ready` event never fires, and the play button never enables. macOS
+  Safari/Chrome auto-resume on first interaction. Fixed by patching
+  `window.AudioContext` to track every instance and resuming them on the first
+  `pointerdown` / `keydown` / `touchstart`, plus resuming inline on the play
+  click itself. The MIME fix has a backend regression test; the unlock path
+  has a Vitest unit test covering idempotency, post-unlock contexts, and
+  error isolation. (#510)
 
 ## [0.3.6] — 2026-06-16
 
