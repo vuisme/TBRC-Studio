@@ -27,6 +27,20 @@ The bundled TTS model package (`pyproject.toml`) is versioned independently.
   contact — less wall-of-text, faster to act on.
 ### Fixed
 
+- **Designed voices saved with a bad style no longer render wrong or crash
+  generation.** A designed voice could persist an `instruct` the engine
+  validator rejects — either the literal `"[object Object]"` from an old build,
+  or freeform prose typed into the style field — which made every generation or
+  dub that used the voice fail with `Unsupported instruct items found in …`
+  (surfacing to users as a 400/500 and, when it tore down mid-render, "Can't
+  reach the local backend"). The previous fix only *blanked* `"[object Object]"`,
+  which silently dropped the design — so an Indonesian **female** voice came out
+  **male**. Now the stored instruct is sanitized down to valid tags at every
+  seam (save, edit, and when a profile drives Generate or Dub), and when the
+  stored value is unusable the tags are **rebuilt from the design's saved
+  category picks (`vd_states`)** so the intended gender/age/pitch/accent survive.
+  A migration (0007) heals existing poisoned profiles in place — no reinstall,
+  no manual fix. (#550 #571 #594 #596)
 - **"Transcribe stream dropped … Likely ASR backend failed to load" now shows
   the *real* reason.** When transcription failed to load its ASR model (the
   reported case was WhisperX on Windows — typically a faster-whisper /
