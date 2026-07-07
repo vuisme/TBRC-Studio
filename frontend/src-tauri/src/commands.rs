@@ -138,7 +138,7 @@ fn dirs_data_dir() -> PathBuf {
 }
 
 fn tauri_log_path() -> PathBuf {
-    let bid = "com.debpalash.omnivoice-studio";
+    let bid = "com.vuisme.tbrc-studio";
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
 
     if cfg!(target_os = "macos") {
@@ -660,3 +660,4 @@ mod paste_error_tests {
         assert_eq!(CLIPBOARD_RESTORE_DELAY.as_millis(), 300);
     }
 }
+

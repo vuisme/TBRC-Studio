@@ -156,7 +156,7 @@ pub fn load_config_pre_app() -> AppConfig {
 
 /// Also used by `commands::webview_cache_paths` (#879) to locate the WebView2
 /// profile cache before an `AppHandle` exists.
-pub const BUNDLE_IDENTIFIER: &str = "com.debpalash.omnivoice-studio";
+pub const BUNDLE_IDENTIFIER: &str = "com.vuisme.tbrc-studio";
 
 fn config_path_pre_app() -> Option<PathBuf> {
     portable_config_file()
@@ -304,3 +304,4 @@ pub fn set_update_channel(app: tauri::AppHandle, channel: String) -> String {
     log::info!("Update channel set to {c}");
     c.to_string()
 }
+

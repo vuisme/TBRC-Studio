@@ -422,7 +422,7 @@ pub fn run() {
                 let dictate_i = MenuItemBuilder::new("Start Dictation  ⌘⇧Space")
                     .id("dictate")
                     .build(app)?;
-                let open_studio_i = MenuItemBuilder::new("Open OmniVoice Studio")
+                let open_studio_i = MenuItemBuilder::new("Open TBRC Studio")
                     .id("open_studio")
                     .build(app)?;
                 let quit_i = MenuItemBuilder::new("Quit Dictation")
@@ -467,7 +467,7 @@ pub fn run() {
             let tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .menu(&tray_menu)
-                .tooltip(if pill_mode_tray { "OmniVoice Dictation" } else { "OmniVoice Studio" })
+                .tooltip(if pill_mode_tray { "TBRC Dictation" } else { "TBRC Studio" })
                 .on_menu_event(move |app, event| {
                     match event.id().as_ref() {
                         "show" => {
@@ -787,3 +787,4 @@ pub fn run() {
         }
     });
 }
+
