@@ -1,7 +1,7 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Upload, Film, Globe, X, Plus } from 'lucide-react';
-import { Button, Dialog, Select } from '../ui';
+import { Upload, Film, Globe, X, Plus, Link, LayoutTemplate } from 'lucide-react';
+import { Button, Dialog, Select, Input, Textarea } from '../ui';
 import MultiLangPicker from './MultiLangPicker';
 import { PRESETS } from '../utils/constants';
 
@@ -15,16 +15,73 @@ export default function BatchAddDialog({
   open,
   onClose,
   profiles = [],
+  templates = [],
+  onCreateTemplate,
+  onUpdateTemplate,
   onEnqueue, // async (files, settings) => void
 }) {
   const { t } = useTranslation();
   const [files, setFiles] = useState([]);
+  const [urlsText, setUrlsText] = useState('');
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState([]);
+  const [newTemplateName, setNewTemplateName] = useState('');
+  const [templateDraft, setTemplateDraft] = useState(null);
+  const [savingTemplate, setSavingTemplate] = useState(false);
   const [langs, setLangs] = useState([{ lang: 'Spanish', code: 'es' }]);
   const [voiceId, setVoiceId] = useState('');
   const [preserveBg, setPreserveBg] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
+
+  const selectedTemplate = useMemo(
+    () => templates.find((tpl) => tpl.id === selectedTemplateIds[0]) || null,
+    [templates, selectedTemplateIds],
+  );
+
+  useEffect(() => {
+    if (!selectedTemplate) {
+      setTemplateDraft(null);
+      return;
+    }
+    setTemplateDraft({
+      name: selectedTemplate.name || '',
+      horizontal_align: selectedTemplate.horizontal_align || 'center',
+      vertical_align: selectedTemplate.vertical_align || 'middle',
+      text_color: selectedTemplate.text_color || '#ffffff',
+      stroke_color: selectedTemplate.stroke_color || '#000000',
+      stroke_width: selectedTemplate.stroke_width ?? 2,
+      intro_duration: selectedTemplate.intro_duration ?? 3,
+      intro_effect: selectedTemplate.intro_effect || 'fade',
+      text_box: {
+        x: selectedTemplate.text_box?.x ?? 0.1,
+        y: selectedTemplate.text_box?.y ?? 0.72,
+        width: selectedTemplate.text_box?.width ?? 0.8,
+        height: selectedTemplate.text_box?.height ?? 0.18,
+      },
+    });
+  }, [selectedTemplate]);
+
+  const updateDraft = (patch) => setTemplateDraft((prev) => ({ ...(prev || {}), ...patch }));
+  const updateDraftBox = (key, value) => {
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric)) return;
+    setTemplateDraft((prev) => ({
+      ...(prev || {}),
+      text_box: { ...(prev?.text_box || {}), [key]: numeric },
+    }));
+  };
+
+  const saveTemplateDraft = async () => {
+    if (!selectedTemplate || !templateDraft) return;
+    setSavingTemplate(true);
+    try {
+      await onUpdateTemplate?.(selectedTemplate.id, templateDraft);
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
+
 
   const handleDrop = useCallback((e) => {
     e.preventDefault();
@@ -37,11 +94,16 @@ export default function BatchAddDialog({
   };
 
   const handleSubmit = async () => {
-    if (!files.length || !langs.length) return;
+    const urls = urlsText
+      .split(/\r?\n/)
+      .map((u) => u.trim())
+      .filter(Boolean);
+    if ((!files.length && !urls.length) || (!langs.length && !selectedTemplateIds.length)) return;
     setSubmitting(true);
     try {
-      await onEnqueue?.(files, { langs, voiceId, preserveBg });
+      await onEnqueue?.(files, { langs, voiceId, preserveBg, urls, templateIds: selectedTemplateIds });
       setFiles([]);
+      setUrlsText('');
       onClose?.();
     } finally {
       setSubmitting(false);
@@ -61,11 +123,11 @@ export default function BatchAddDialog({
       footer={
         <>
           <span className="flex-1 font-mono text-[0.68rem] text-[var(--chrome-fg-dim)]">
-            {files.length > 0 && langs.length > 0
+            {files.length > 0 || urlsText.trim()
               ? t('batch.estimate', {
-                  videos: files.length,
-                  langs: langs.length,
-                  jobs: files.length * langs.length,
+                  videos: files.length + urlsText.split(/\r?\n/).filter((u) => u.trim()).length,
+                  langs: Math.max(langs.length, selectedTemplateIds.length || 1),
+                  jobs: files.length * langs.length + urlsText.split(/\r?\n/).filter((u) => u.trim()).length * Math.max(1, selectedTemplateIds.length),
                 })
               : t('batch.select_files_langs')}
           </span>
@@ -76,7 +138,7 @@ export default function BatchAddDialog({
             variant="primary"
             size="sm"
             onClick={handleSubmit}
-            disabled={!files.length || !langs.length || submitting}
+            disabled={(!files.length && !urlsText.trim()) || (!langs.length && !selectedTemplateIds.length) || submitting}
             loading={submitting}
             leading={!submitting && <Plus size={10} />}
           >
@@ -153,6 +215,176 @@ export default function BatchAddDialog({
           </div>
         )}
 
+        <div className="flex flex-col gap-[6px]">
+          <span className="mb-[4px] flex items-center gap-[4px] font-mono text-[0.62rem] font-semibold uppercase tracking-[0.04em] text-[var(--chrome-fg-dim)]">
+            <Link size={9} /> Batch URLs
+          </span>
+          <Textarea
+            size="sm"
+            rows={3}
+            value={urlsText}
+            onChange={(e) => setUrlsText(e.target.value)}
+            placeholder={"https://example.com/video-1.mp4\nhttps://example.com/video-2.mp4"}
+          />
+        </div>
+
+        <div className="flex flex-col gap-[6px]">
+          <span className="mb-[4px] flex items-center gap-[4px] font-mono text-[0.62rem] font-semibold uppercase tracking-[0.04em] text-[var(--chrome-fg-dim)]">
+            <LayoutTemplate size={9} /> Templates
+          </span>
+          <div className="flex flex-col gap-[5px] rounded-[6px] border border-[var(--chrome-border)] bg-[var(--chrome-hover-bg)] p-[8px]">
+            {templates.length === 0 && (
+              <span className="text-[0.72rem] text-[var(--chrome-fg-dim)]">No templates yet.</span>
+            )}
+            {templates.map((tpl) => (
+              <label key={tpl.id} className="flex cursor-pointer items-center gap-2 text-[0.76rem] text-[var(--chrome-fg)]">
+                <input
+                  type="checkbox"
+                  checked={selectedTemplateIds.includes(tpl.id)}
+                  onChange={(e) =>
+                    setSelectedTemplateIds((prev) =>
+                      e.target.checked ? [...prev, tpl.id] : prev.filter((id) => id !== tpl.id),
+                    )
+                  }
+                />
+                <span className="min-w-0 flex-1 truncate">{tpl.name}</span>
+              </label>
+            ))}
+            <div className="mt-[4px] flex gap-[6px]">
+              <Input
+                size="sm"
+                value={newTemplateName}
+                onChange={(e) => setNewTemplateName(e.target.value)}
+                placeholder="New template name"
+              />
+              <Button
+                variant="subtle"
+                size="xs"
+                onClick={async () => {
+                  const name = newTemplateName.trim();
+                  if (!name) return;
+                  const created = await onCreateTemplate?.(name);
+                  setNewTemplateName('');
+                  if (created?.id) setSelectedTemplateIds((prev) => [...prev, created.id]);
+                }}
+                leading={<Plus size={9} />}
+              >
+                Add
+              </Button>
+            </div>
+            {selectedTemplate && templateDraft && (
+              <div className="mt-[8px] grid gap-[10px] border-t border-[var(--chrome-border)] pt-[10px] md:grid-cols-[1fr_180px]">
+                <div className="grid gap-[8px]">
+                  <div className="grid grid-cols-2 gap-[6px]">
+                    <Input
+                      size="sm"
+                      value={templateDraft.name}
+                      onChange={(e) => updateDraft({ name: e.target.value })}
+                      placeholder="Template name"
+                    />
+                    <Input
+                      size="sm"
+                      type="number"
+                      min="0"
+                      max="16"
+                      value={templateDraft.stroke_width}
+                      onChange={(e) => updateDraft({ stroke_width: Number(e.target.value) })}
+                      placeholder="Stroke"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-[6px]">
+                    <Select
+                      size="sm"
+                      value={templateDraft.horizontal_align}
+                      onChange={(e) => updateDraft({ horizontal_align: e.target.value })}
+                    >
+                      <option value="left">Left</option>
+                      <option value="center">Center</option>
+                      <option value="right">Right</option>
+                    </Select>
+                    <Select
+                      size="sm"
+                      value={templateDraft.vertical_align}
+                      onChange={(e) => updateDraft({ vertical_align: e.target.value })}
+                    >
+                      <option value="top">Top</option>
+                      <option value="middle">Middle</option>
+                      <option value="bottom">Bottom</option>
+                    </Select>
+                  </div>
+                  <div className="grid grid-cols-4 gap-[6px]">
+                    {['x', 'y', 'width', 'height'].map((key) => (
+                      <Input
+                        key={key}
+                        size="sm"
+                        type="number"
+                        min="0"
+                        max="1"
+                        step="0.01"
+                        value={templateDraft.text_box[key]}
+                        onChange={(e) => updateDraftBox(key, e.target.value)}
+                        aria-label={`Text box ${key}`}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-[8px]">
+                    <input
+                      type="color"
+                      value={templateDraft.text_color}
+                      onChange={(e) => updateDraft({ text_color: e.target.value })}
+                      aria-label="Text color"
+                      className="h-[28px] w-[38px] cursor-pointer rounded-[4px] border border-[var(--chrome-border)] bg-transparent p-0"
+                    />
+                    <input
+                      type="color"
+                      value={templateDraft.stroke_color}
+                      onChange={(e) => updateDraft({ stroke_color: e.target.value })}
+                      aria-label="Stroke color"
+                      className="h-[28px] w-[38px] cursor-pointer rounded-[4px] border border-[var(--chrome-border)] bg-transparent p-0"
+                    />
+                    <Button
+                      variant="subtle"
+                      size="xs"
+                      onClick={saveTemplateDraft}
+                      loading={savingTemplate}
+                      disabled={!templateDraft.name.trim()}
+                    >
+                      Save
+                    </Button>
+                  </div>
+                </div>
+                <div className="relative aspect-video overflow-hidden rounded-[6px] border border-[var(--chrome-border)] bg-[linear-gradient(135deg,#15171d,#242833)]">
+                  <div className="absolute inset-x-[12%] top-[18%] h-[1px] bg-white/10" />
+                  <div className="absolute inset-y-[18%] left-[18%] w-[1px] bg-white/10" />
+                  <div
+                    className="absolute flex px-[4px] py-[2px] text-[10px] font-semibold leading-tight"
+                    style={{
+                      left: `${templateDraft.text_box.x * 100}%`,
+                      top: `${templateDraft.text_box.y * 100}%`,
+                      width: `${templateDraft.text_box.width * 100}%`,
+                      height: `${templateDraft.text_box.height * 100}%`,
+                      alignItems:
+                        templateDraft.vertical_align === 'bottom'
+                          ? 'flex-end'
+                          : templateDraft.vertical_align === 'top'
+                            ? 'flex-start'
+                            : 'center',
+                      justifyContent:
+                        templateDraft.horizontal_align === 'right'
+                          ? 'flex-end'
+                          : templateDraft.horizontal_align === 'left'
+                            ? 'flex-start'
+                            : 'center',
+                      color: templateDraft.text_color,
+                      WebkitTextStroke: `${templateDraft.stroke_width}px ${templateDraft.stroke_color}`,
+                    }}
+                  >
+                    Clip title
+                  </div>
+                </div>
+              </div>
+            )}          </div>
+        </div>
         {/* Settings */}
         <div className="flex flex-col gap-[12px]">
           <div className="flex flex-col gap-[6px]">
@@ -205,3 +437,6 @@ export default function BatchAddDialog({
     </Dialog>
   );
 }
+
+
+

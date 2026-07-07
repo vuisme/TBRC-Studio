@@ -20,6 +20,11 @@ import {
   cancelBatchJob,
   deleteBatchJob,
   enqueueBatchJob,
+  listBatchTemplates,
+  createBatchTemplate,
+  createRenderBatch,
+  listRenderBatches,
+  deleteRenderBatch,
 } from '../api/batch';
 import { API } from '../api/client';
 import BatchAddDialog from '../components/BatchAddDialog';
@@ -72,12 +77,25 @@ export default function BatchQueue({ onBack }) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [templates, setTemplates] = useState([]);
 
   // Ids last seen queued/running. The 'active' filter excludes finished jobs
   // server-side, so a job VANISHING from the active list is the completion
   // signal — resolve its final status to tell done apart from failed/cancelled.
   const activeIdsRef = useRef(new Set());
 
+
+  const reloadTemplates = useCallback(async () => {
+    try {
+      setTemplates(await listBatchTemplates());
+    } catch (e) {
+      console.warn('template load failed', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    reloadTemplates();
+  }, [reloadTemplates]);
   const resolveFinishedJob = useCallback(async (id) => {
     try {
       const job = await getBatchJob(id);
@@ -93,7 +111,37 @@ export default function BatchQueue({ onBack }) {
     setLoading(true);
     try {
       const statusParam = tab === 'active' ? 'active' : tab;
-      const next = await listBatchJobs(statusParam, 100);
+      const [classicJobs, renderBatches] = await Promise.all([
+        listBatchJobs(statusParam, 100),
+        listRenderBatches(undefined, 100),
+      ]);
+      const renderRows = renderBatches
+        .filter((b) => {
+          if (tab === 'active') return b.status === 'queued' || b.status === 'running';
+          return b.status === tab;
+        })
+        .map((b) => ({
+          id: b.id,
+          kind: 'render',
+          status: b.status,
+          filename: `Render batch ${b.id}`,
+          langs: Array.from(new Set((b.items || []).map((i) => i.template_name || i.template_id))),
+          preserve_bg: !!b.settings?.preserve_bg,
+          created_at: b.created_at,
+          started_at: null,
+          finished_at: b.finished_at,
+          error: b.error,
+          progress: b.items?.length
+            ? {
+                stage: 'templates',
+                percent: Math.round(
+                  (b.items.filter((i) => i.status === 'done').length / b.items.length) * 100,
+                ),
+                total_segments: b.items.length,
+              }
+            : null,
+        }));
+      const next = [...renderRows, ...classicJobs].sort((a, b) => b.created_at - a.created_at);
       setJobs(next);
       if (statusParam === 'active') {
         const nextIds = new Set(next.map((j) => j.id));
@@ -123,7 +171,24 @@ export default function BatchQueue({ onBack }) {
   const handleEnqueue = useCallback(
     async (files, settings) => {
       const langCodes = settings.langs.map((l) => l.code);
+      const urls = settings.urls || [];
+      const templateIds = settings.templateIds || [];
       let success = 0;
+
+      if (urls.length && templateIds.length) {
+        try {
+          await createRenderBatch({
+            sources: urls.map((url) => ({ kind: 'url', url })),
+            template_ids: templateIds,
+            settings: { target_languages: langCodes, preserve_bg: settings.preserveBg },
+            output: { local_root: 'outputs/batches' },
+          });
+          success += urls.length;
+        } catch (e) {
+          toastErrorWithReport(`Render batch failed: ${e.message}`, e);
+        }
+      }
+
       for (const file of files) {
         try {
           await enqueueBatchJob(
@@ -148,7 +213,6 @@ export default function BatchQueue({ onBack }) {
     },
     [t, reload],
   );
-
   const handleCancel = useCallback(
     async (id) => {
       try {
@@ -162,10 +226,45 @@ export default function BatchQueue({ onBack }) {
     [t, reload],
   );
 
-  const handleDelete = useCallback(
-    async (id) => {
+
+  const handleCreateTemplate = useCallback(
+    async (name) => {
       try {
-        await deleteBatchJob(id);
+        const created = await createBatchTemplate(name);
+        await reloadTemplates();
+        toast.success('Template created');
+        return created;
+      } catch (e) {
+        toastErrorWithReport(`Template create failed: ${e.message}`, e);
+        return null;
+      }
+    },
+    [reloadTemplates],
+  );
+
+  const handleUpdateTemplate = useCallback(
+    async (id, patch) => {
+      try {
+        const updated = await updateBatchTemplate(id, patch);
+        await reloadTemplates();
+        toast.success('Template saved');
+        return updated;
+      } catch (e) {
+        toastErrorWithReport(`Template save failed: ${e.message}`, e);
+        return null;
+      }
+    },
+    [reloadTemplates],
+  );
+  const handleDelete = useCallback(
+    async (jobOrId) => {
+      const job = typeof jobOrId === 'string' ? { id: jobOrId } : jobOrId;
+      try {
+        if (job.kind === 'render') {
+          await deleteRenderBatch(job.id);
+        } else {
+          await deleteBatchJob(job.id);
+        }
         toast.success(t('batch.job_deleted'));
         reload();
       } catch (e) {
@@ -174,7 +273,6 @@ export default function BatchQueue({ onBack }) {
     },
     [t, reload],
   );
-
   return (
     <div className="batch-queue flex flex-1 flex-col gap-[var(--space-4)] min-h-0 overflow-y-auto px-[var(--space-6)] py-[var(--space-5)]">
       <div className="batch-queue__bar flex shrink-0 items-center gap-[var(--space-4)]">
@@ -235,7 +333,14 @@ export default function BatchQueue({ onBack }) {
         ))}
       </div>
 
-      <BatchAddDialog open={addOpen} onClose={() => setAddOpen(false)} onEnqueue={handleEnqueue} />
+      <BatchAddDialog
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onEnqueue={handleEnqueue}
+        templates={templates}
+        onCreateTemplate={handleCreateTemplate}
+        onUpdateTemplate={handleUpdateTemplate}
+      />
     </div>
   );
 }
@@ -370,7 +475,7 @@ function JobCard({ job, onCancel, onDelete, t }) {
 
       {/* Actions */}
       <div className="batch-queue__card-actions flex justify-end gap-[var(--space-2)] mt-[var(--space-3)]">
-        {(job.status === 'queued' || job.status === 'running') && (
+        {job.kind !== 'render' && (job.status === 'queued' || job.status === 'running') && (
           <Button
             variant="ghost"
             size="xs"
@@ -384,7 +489,7 @@ function JobCard({ job, onCancel, onDelete, t }) {
           <Button
             variant="ghost"
             size="xs"
-            onClick={() => onDelete(job.id)}
+            onClick={() => onDelete(job)}
             leading={<Trash2 size={10} />}
           >
             {t('batch.delete')}
@@ -403,3 +508,7 @@ function formatDuration(secs) {
   const h = Math.floor(m / 60);
   return `${h}h ${m % 60}m`;
 }
+
+
+
+

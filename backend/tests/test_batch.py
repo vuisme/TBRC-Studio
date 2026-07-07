@@ -5,6 +5,7 @@ avoiding the heavy main app import chain. The batch module is
 lightweight — it only imports os, uuid, time, asyncio, logging,
 fastapi, and pydantic at module level.
 """
+import asyncio
 import io
 import os
 import sys
@@ -21,21 +22,28 @@ sys.modules["core.config"] = config_mod
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from api.routers.batch import router, _jobs, _set_progress
+from api.routers.batch import router, _jobs, _render_batches, _render_items, _templates, _set_progress, _process_render_batch, _drawtext_filter
 
 
 @pytest.fixture(autouse=True)
 def reset_state():
-    """Clear in-memory state between tests and disable the worker."""
+    """Clear in-memory state between tests and disable the workers."""
     import api.routers.batch as batch
     batch._jobs.clear()
+    batch._templates.clear()
+    batch._render_batches.clear()
+    batch._render_items.clear()
     batch._queue = None
+    batch._render_queue = None
     if batch._worker_task and not batch._worker_task.done():
         batch._worker_task.cancel()
+    if batch._render_worker_task and not batch._render_worker_task.done():
+        batch._render_worker_task.cancel()
     batch._worker_task = None
+    batch._render_worker_task = None
 
-    # Monkey-patch _ensure_queue to use a no-op worker so jobs stay queued
     original_ensure = batch._ensure_queue
+    original_enqueue_render = batch._enqueue_render_batch
 
     def _test_ensure_queue():
         if batch._queue is None:
@@ -43,18 +51,22 @@ def reset_state():
 
             async def _noop():
                 while True:
-                    job_id = await batch._queue.get()
+                    await batch._queue.get()
                     batch._queue.task_done()
 
             batch._queue = asyncio.Queue()
             batch._worker_task = asyncio.ensure_future(_noop())
 
     batch._ensure_queue = _test_ensure_queue
+    batch._enqueue_render_batch = lambda batch_id: None
     yield
     batch._ensure_queue = original_ensure
+    batch._enqueue_render_batch = original_enqueue_render
     batch._jobs.clear()
-
-
+    batch._templates.clear()
+    batch._render_batches.clear()
+    batch._render_items.clear()
+    batch._render_queue = None
 @pytest.fixture
 def client():
     app = FastAPI()
@@ -189,3 +201,148 @@ class TestSetProgress:
         _set_progress(job, "generate", 25, current_lang="es")
         assert job["progress"]["stage"] == "generate"
         assert job["progress"]["current_lang"] == "es"
+
+
+class TestTemplateFilter:
+    def test_drawtext_filter_escapes_ffmpeg_expression_commas(self):
+        filt = _drawtext_filter({"name": "Frame A"}, {"source": {"title": "Clip A"}})
+        assert "drawtext=" in filt
+        assert "max(18\\,min(" in filt
+        assert "Clip A" in filt
+
+class TestRenderTemplates:
+    def test_create_and_list_template(self, client):
+        resp = client.post(
+            "/batch/templates",
+            json={
+                "name": "Lower third",
+                "frame_image": "frames/lower.png",
+                "text_box": {"x": 0.1, "y": 0.72, "width": 0.8, "height": 0.18},
+                "horizontal_align": "center",
+                "vertical_align": "middle",
+                "font_family": "Inter",
+                "text_color": "#ffffff",
+                "stroke_color": "#000000",
+                "stroke_width": 2,
+                "intro_duration": 3,
+                "intro_effect": "fade",
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        created = resp.json()
+        assert created["id"]
+        assert created["name"] == "Lower third"
+
+        listed = client.get("/batch/templates").json()
+        assert [t["id"] for t in listed] == [created["id"]]
+
+    def test_template_requires_name(self, client):
+        resp = client.post("/batch/templates", json={"name": " "})
+        assert resp.status_code == 422
+
+class TestRenderBatchContract:
+    def _template(self, client, name):
+        return client.post("/batch/templates", json={"name": name}).json()
+
+    def test_create_batch_expands_sources_by_templates_and_reuses_source_artifact(self, client):
+        t1 = self._template(client, "Frame A")
+        t2 = self._template(client, "Frame B")
+
+        resp = client.post(
+            "/batch/render-batches",
+            json={
+                "sources": [
+                    {"kind": "url", "url": "https://example.com/a.mp4", "title": "Clip A"},
+                    {"kind": "url", "url": "https://example.com/b.mp4", "title": "Clip B"},
+                ],
+                "template_ids": [t1["id"], t2["id"]],
+                "settings": {"target_language": "vi", "preserve_bg": True},
+                "output": {"local_root": "outputs/batches"},
+            },
+        )
+
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["status"] == "queued"
+        assert len(body["items"]) == 4
+        assert {item["template_id"] for item in body["items"]} == {t1["id"], t2["id"]}
+        by_source = {}
+        for item in body["items"]:
+            by_source.setdefault(item["source_index"], set()).add(item["source_artifact_key"])
+        assert len(by_source) == 2
+        assert all(len(keys) == 1 for keys in by_source.values())
+
+    def test_rerun_failed_item_sets_it_back_to_queued(self, client):
+        t1 = self._template(client, "Frame A")
+        batch = client.post(
+            "/batch/render-batches",
+            json={
+                "sources": [{"kind": "url", "url": "https://example.com/a.mp4"}],
+                "template_ids": [t1["id"]],
+            },
+        ).json()
+        item_id = batch["items"][0]["id"]
+        _render_items[item_id]["status"] = "failed"
+        _render_items[item_id]["error"] = "boom"
+
+        resp = client.post(f"/batch/render-items/{item_id}/rerun")
+        assert resp.status_code == 200, resp.text
+        item = resp.json()
+        assert item["status"] == "queued"
+        assert item["error"] is None
+
+    def test_delete_batch_removes_items(self, client):
+        t1 = self._template(client, "Frame A")
+        batch = client.post(
+            "/batch/render-batches",
+            json={
+                "sources": [{"kind": "url", "url": "https://example.com/a.mp4"}],
+                "template_ids": [t1["id"]],
+            },
+        ).json()
+
+        resp = client.delete(f"/batch/render-batches/{batch['id']}")
+        assert resp.status_code == 200
+        assert client.get(f"/batch/render-batches/{batch['id']}").status_code == 404
+        assert _render_items == {}
+
+
+    def test_process_render_batch_reuses_source_once_for_multiple_templates(self, client, monkeypatch):
+        import api.routers.batch as batch_mod
+
+        t1 = self._template(client, "Frame A")
+        t2 = self._template(client, "Frame B")
+        batch = client.post(
+            "/batch/render-batches",
+            json={
+                "sources": [{"kind": "url", "url": "https://example.com/a.mp4", "title": "Clip A"}],
+                "template_ids": [t1["id"], t2["id"]],
+                "settings": {"target_language": "vi"},
+            },
+        ).json()
+
+        prepared = []
+        rendered = []
+
+        async def fake_prepare(render_batch, source_items):
+            prepared.append([item["id"] for item in source_items])
+            return "dubbed-source.mp4"
+
+        async def fake_render(source_output, item, template):
+            rendered.append((source_output, item["id"], template["id"]))
+            item["output_path"] = f"/tmp/{item['id']}.mp4"
+            return item["output_path"]
+
+        monkeypatch.setattr(batch_mod, "_prepare_render_source", fake_prepare)
+        monkeypatch.setattr(batch_mod, "_render_template_output", fake_render)
+
+        asyncio.run(_process_render_batch(batch["id"]))
+
+        body = client.get(f"/batch/render-batches/{batch['id']}").json()
+        assert body["status"] == "done"
+        assert len(prepared) == 1
+        assert len(prepared[0]) == 2
+        assert len(rendered) == 2
+        assert {item["status"] for item in body["items"]} == {"done"}
+        assert {item["phase"] for item in body["items"]} == {"done"}
+        assert {item["progress"] for item in body["items"]} == {100}
