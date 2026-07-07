@@ -12,6 +12,7 @@ import {
   XCircle,
   Film,
   Globe,
+  LayoutTemplate,
 } from 'lucide-react';
 import { Panel, Button, Badge, Tabs } from '../ui';
 import {
@@ -22,12 +23,14 @@ import {
   enqueueBatchJob,
   listBatchTemplates,
   createBatchTemplate,
+  updateBatchTemplate,
   createRenderBatch,
   listRenderBatches,
   deleteRenderBatch,
 } from '../api/batch';
 import { API } from '../api/client';
 import BatchAddDialog from '../components/BatchAddDialog';
+import BatchTemplateManager from '../components/BatchTemplateManager';
 import toast from 'react-hot-toast';
 import { toastErrorWithReport } from '../utils/errorToast';
 import { recordValueMoment } from '../utils/donationMoments';
@@ -70,6 +73,7 @@ export default function BatchQueue({ onBack }) {
       { id: 'active', label: t('batch.active'), icon: Activity },
       { id: 'done', label: t('batch.completed'), icon: CheckCircle },
       { id: 'failed', label: t('batch.failed'), icon: AlertCircle },
+      { id: 'templates', label: 'Frame Templates', icon: LayoutTemplate },
     ],
     [t],
   );
@@ -108,6 +112,10 @@ export default function BatchQueue({ onBack }) {
   }, []);
 
   const reload = useCallback(async () => {
+    if (tab === 'templates') {
+      await reloadTemplates();
+      return;
+    }
     setLoading(true);
     try {
       const statusParam = tab === 'active' ? 'active' : tab;
@@ -155,7 +163,7 @@ export default function BatchQueue({ onBack }) {
     } finally {
       setLoading(false);
     }
-  }, [tab, resolveFinishedJob]);
+  }, [tab, resolveFinishedJob, reloadTemplates]);
 
   useEffect(() => {
     reload();
@@ -310,7 +318,15 @@ export default function BatchQueue({ onBack }) {
 
       <Tabs items={TABS} value={tab} onChange={setTab} className="batch-queue__tabs shrink-0" />
 
-      {jobs.length === 0 && !loading && (
+      {tab === 'templates' && (
+        <BatchTemplateManager
+          templates={templates}
+          onCreateTemplate={handleCreateTemplate}
+          onUpdateTemplate={handleUpdateTemplate}
+        />
+      )}
+
+      {tab !== 'templates' && jobs.length === 0 && !loading && (
         <Panel variant="flat" padding="lg" className="batch-queue__empty text-center text-fg-muted">
           <div>
             <p>
@@ -327,11 +343,13 @@ export default function BatchQueue({ onBack }) {
         </Panel>
       )}
 
-      <div className="batch-queue__list flex flex-1 flex-col gap-[var(--space-3)] min-h-0">
-        {jobs.map((j) => (
-          <JobCard key={j.id} job={j} onCancel={handleCancel} onDelete={handleDelete} t={t} />
-        ))}
-      </div>
+      {tab !== 'templates' && (
+        <div className="batch-queue__list flex flex-1 flex-col gap-[var(--space-3)] min-h-0">
+          {jobs.map((j) => (
+            <JobCard key={j.id} job={j} onCancel={handleCancel} onDelete={handleDelete} t={t} />
+          ))}
+        </div>
+      )}
 
       <BatchAddDialog
         open={addOpen}
@@ -508,7 +526,4 @@ function formatDuration(secs) {
   const h = Math.floor(m / 60);
   return `${h}h ${m % 60}m`;
 }
-
-
-
 
