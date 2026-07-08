@@ -66,7 +66,7 @@ const STAGE_LABELS = {
   done: 'batch.stage_complete',
 };
 
-export default function BatchQueue({ onBack }) {
+export default function BatchQueue({ onBack, initialTab = 'active' }) {
   const { t } = useTranslation();
   const TABS = useMemo(
     () => [
@@ -77,7 +77,7 @@ export default function BatchQueue({ onBack }) {
     ],
     [t],
   );
-  const [tab, setTab] = useState('active');
+  const [tab, setTab] = useState(initialTab);
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [addOpen, setAddOpen] = useState(false);

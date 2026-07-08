@@ -237,6 +237,7 @@ function App() {
     mode === 'voice' ||
     mode === 'donate' ||
     mode === 'queue' ||
+    mode === 'templates' ||
     mode === 'tools' ||
     mode === 'projects' ||
     mode === 'gallery' ||
@@ -1326,6 +1327,12 @@ function App() {
           <ErrorBoundary name="batch-queue">
             <Suspense fallback={<LazyFallback />}>
               <BatchQueue onBack={() => setMode('launchpad')} />
+            </Suspense>
+          </ErrorBoundary>
+        ) : mode === 'templates' ? (
+          <ErrorBoundary name="frame-templates">
+            <Suspense fallback={<LazyFallback />}>
+              <BatchQueue onBack={() => setMode('launchpad')} initialTab="templates" />
             </Suspense>
           </ErrorBoundary>
         ) : mode === 'tools' ? (

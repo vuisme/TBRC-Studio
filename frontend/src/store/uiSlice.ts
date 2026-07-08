@@ -27,6 +27,8 @@ export type AppMode =
   | 'voice'
   | 'tools'
   | 'batch'
+  | 'queue'
+  | 'templates'
   | 'contact'
   | 'settings';
 

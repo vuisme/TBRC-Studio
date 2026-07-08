@@ -5,6 +5,8 @@ import {
   Fingerprint,
   Wand2,
   Film,
+  ListVideo,
+  LayoutTemplate,
   Lock,
   BookOpen,
   BookMarked,
@@ -83,7 +85,7 @@ export default function Launchpad({
   // off" strip. exportHistory arrives newest-first from /export/history.
   const recentFiles = exportHistory.slice(0, 4);
 
-  // The seven feature cards — single source of truth for the full-width
+  // The feature cards — single source of truth for the full-width
   // responsive grid (LaunchpadDeck) so hues, i18n keys, counts and navigation
   // targets stay in one place.
   const features = [
@@ -113,6 +115,22 @@ export default function Launchpad({
       desc: t('launchpad.dub_desc'),
       count: studioProjects.length,
       go: () => setMode('dub'),
+    },
+    {
+      key: 'batch',
+      hue: '#fabd2f',
+      Icon: ListVideo,
+      title: t('launchpad.batch_title'),
+      desc: t('launchpad.batch_desc'),
+      go: () => setMode('queue'),
+    },
+    {
+      key: 'templates',
+      hue: '#8ec07c',
+      Icon: LayoutTemplate,
+      title: t('launchpad.templates_title'),
+      desc: t('launchpad.templates_desc'),
+      go: () => setMode('templates'),
     },
     {
       key: 'stories',
