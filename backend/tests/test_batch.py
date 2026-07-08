@@ -210,6 +210,20 @@ class TestTemplateFilter:
         assert "max(18\\,min(" in filt
         assert "Clip A" in filt
 
+    def test_drawtext_filter_uses_template_caption_text(self):
+        filt = _drawtext_filter({"name": "Frame A", "caption_text": "Hook: {title}"}, {"source": {"title": "Clip A"}})
+        assert "Hook\\: Clip A" in filt
+        assert "text='Clip A'" not in filt
+
+    def test_drawtext_filter_uses_source_caption_placeholder(self):
+        filt = _drawtext_filter({"name": "Frame A", "caption_text": "{caption}"}, {"source": {"title": "Clip A", "caption": "Main caption"}})
+        assert "Main caption" in filt
+        assert "Clip A" not in filt
+
+    def test_drawtext_filter_uses_font_size(self):
+        filt = _drawtext_filter({"name": "Frame A", "font_size": 88}, {"source": {"title": "Clip A"}})
+        assert "fontsize=88" in filt
+
 class TestRenderTemplates:
     def test_create_and_list_template(self, client):
         resp = client.post(

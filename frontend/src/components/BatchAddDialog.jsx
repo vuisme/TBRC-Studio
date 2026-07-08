@@ -29,6 +29,9 @@ export default function BatchAddDialog({
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [langs, setLangs] = useState([{ lang: 'Spanish', code: 'es' }]);
   const [voiceId, setVoiceId] = useState('');
+  const [title, setTitle] = useState('');
+  const [caption, setCaption] = useState('');
+  const [ttsScriptMode, setTtsScriptMode] = useState('caption');
   const [preserveBg, setPreserveBg] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
@@ -101,9 +104,20 @@ export default function BatchAddDialog({
     if ((!files.length && !urls.length) || (!langs.length && !selectedTemplateIds.length)) return;
     setSubmitting(true);
     try {
-      await onEnqueue?.(files, { langs, voiceId, preserveBg, urls, templateIds: selectedTemplateIds });
+      await onEnqueue?.(files, {
+        langs,
+        voiceId,
+        preserveBg,
+        urls,
+        templateIds: selectedTemplateIds,
+        title: title.trim(),
+        caption: caption.trim(),
+        ttsScriptMode,
+      });
       setFiles([]);
       setUrlsText('');
+      setTitle('');
+      setCaption('');
       onClose?.();
     } finally {
       setSubmitting(false);
@@ -226,6 +240,29 @@ export default function BatchAddDialog({
             onChange={(e) => setUrlsText(e.target.value)}
             placeholder={"https://example.com/video-1.mp4\nhttps://example.com/video-2.mp4"}
           />
+        </div>
+
+        <div className="grid gap-[8px] rounded-[6px] border border-[var(--chrome-border)] bg-[var(--chrome-hover-bg)] p-[10px]">
+          <span className="font-mono text-[0.62rem] font-semibold uppercase tracking-[0.04em] text-[var(--chrome-fg-dim)]">
+            Intro content
+          </span>
+          <Input
+            size="sm"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Video title"
+          />
+          <Textarea
+            size="sm"
+            rows={3}
+            value={caption}
+            onChange={(e) => setCaption(e.target.value)}
+            placeholder="Caption shown inside the template box"
+          />
+          <Select size="sm" value={ttsScriptMode} onChange={(e) => setTtsScriptMode(e.target.value)}>
+            <option value="caption">TTS script: caption</option>
+            <option value="title_caption">TTS script: title + caption</option>
+          </Select>
         </div>
 
         <div className="flex flex-col gap-[6px]">

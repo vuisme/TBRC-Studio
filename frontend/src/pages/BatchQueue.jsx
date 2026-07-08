@@ -66,7 +66,7 @@ const STAGE_LABELS = {
   done: 'batch.stage_complete',
 };
 
-export default function BatchQueue({ onBack, initialTab = 'active' }) {
+export default function BatchQueue({ onBack, initialTab = 'active', profiles = [] }) {
   const { t } = useTranslation();
   const TABS = useMemo(
     () => [
@@ -186,9 +186,19 @@ export default function BatchQueue({ onBack, initialTab = 'active' }) {
       if (urls.length && templateIds.length) {
         try {
           await createRenderBatch({
-            sources: urls.map((url) => ({ kind: 'url', url })),
+            sources: urls.map((url) => ({
+              kind: 'url',
+              url,
+              title: settings.title || undefined,
+              caption: settings.caption || undefined,
+            })),
             template_ids: templateIds,
-            settings: { target_languages: langCodes, preserve_bg: settings.preserveBg },
+            settings: {
+              target_languages: langCodes,
+              preserve_bg: settings.preserveBg,
+              voice_id: settings.voiceId || undefined,
+              tts_script_mode: settings.ttsScriptMode || 'caption',
+            },
             output: { local_root: 'outputs/batches' },
           });
           success += urls.length;
@@ -353,6 +363,7 @@ export default function BatchQueue({ onBack, initialTab = 'active' }) {
 
       <BatchAddDialog
         open={addOpen}
+        profiles={profiles}
         onClose={() => setAddOpen(false)}
         onEnqueue={handleEnqueue}
         templates={templates}

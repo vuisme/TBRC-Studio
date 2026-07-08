@@ -72,6 +72,8 @@ export interface BatchTemplate {
   name: string;
   frame_image?: string;
   font_family?: string;
+  font_size?: number;
+  caption_text?: string;
   text_box?: { x: number; y: number; width: number; height: number };
   horizontal_align?: string;
   vertical_align?: string;
@@ -131,7 +133,7 @@ export async function updateBatchTemplate(
   return res.json();
 }
 export async function createRenderBatch(input: {
-  sources: Array<{ kind: 'url'; url: string; title?: string }>;
+  sources: Array<{ kind: 'url'; url: string; title?: string; caption?: string }>;
   template_ids: string[];
   settings?: Record<string, unknown>;
   output?: { local_root?: string; drive_enabled?: boolean };

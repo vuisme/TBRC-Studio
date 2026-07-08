@@ -1326,13 +1326,13 @@ function App() {
         ) : mode === 'queue' ? (
           <ErrorBoundary name="batch-queue">
             <Suspense fallback={<LazyFallback />}>
-              <BatchQueue onBack={() => setMode('launchpad')} />
+              <BatchQueue onBack={() => setMode('launchpad')} profiles={profiles} />
             </Suspense>
           </ErrorBoundary>
         ) : mode === 'templates' ? (
           <ErrorBoundary name="frame-templates">
             <Suspense fallback={<LazyFallback />}>
-              <BatchQueue onBack={() => setMode('launchpad')} initialTab="templates" />
+              <BatchQueue onBack={() => setMode('launchpad')} initialTab="templates" profiles={profiles} />
             </Suspense>
           </ErrorBoundary>
         ) : mode === 'tools' ? (

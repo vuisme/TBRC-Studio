@@ -49,6 +49,8 @@ class BatchRenderTemplateInput(BaseModel):
     frame_image: str = ""
     font_file: str = ""
     font_family: str = "Inter"
+    font_size: int = 64
+    caption_text: str = "{caption}"
     text_box: TemplateTextBox = Field(default_factory=TemplateTextBox)
     horizontal_align: str = "center"
     vertical_align: str = "middle"
@@ -62,6 +64,7 @@ class BatchSourceInput(BaseModel):
     kind: str = "url"
     url: str = ""
     title: str = ""
+    caption: str = ""
     file_path: str = ""
 
 class BatchRenderOutputInput(BaseModel):
@@ -392,7 +395,7 @@ def _drawtext_filter(template: dict, item: dict) -> str:
     height = max(0.05, min(1, float(box.get("height", 0.18))))
     align = template.get("horizontal_align", "center")
     valign = template.get("vertical_align", "middle")
-    font_size = f"max(18\\,min({height}*h/2\\,{width}*w/18))"
+    font_size = max(8, min(240, int(template.get("font_size", 64))))
     text_x = f"{x}*w"
     if align == "center":
         text_x = f"{x}*w+({width}*w-text_w)/2"
@@ -403,14 +406,19 @@ def _drawtext_filter(template: dict, item: dict) -> str:
         text_y = f"{y}*h+({height}*h-text_h)/2"
     elif valign == "bottom":
         text_y = f"{y}*h+{height}*h-text_h"
-    title = (item.get("source") or {}).get("title") or item.get("template_name") or "OmniVoice"
-    safe_text = str(title).replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    source = item.get("source") or {}
+    source_title = source.get("title") or item.get("template_name") or "OmniVoice"
+    source_caption = source.get("caption") or source_title
+    template_name = item.get("template_name") or template.get("name") or "Template"
+    caption = str(template.get("caption_text") or "{caption}")
+    caption = caption.replace("{title}", str(source_title)).replace("{caption}", str(source_caption)).replace("{template}", str(template_name))
+    safe_text = caption.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'").replace("\n", "\\n")
     font_color = _ffmpeg_color(template.get("text_color", "#ffffff"), "white")
     stroke_color = _ffmpeg_color(template.get("stroke_color", "#000000"), "black")
     return (
         "drawtext="
         f"text='{safe_text}':"
-        f"x='{text_x}':y='{text_y}':fontsize='{font_size}':"
+        f"x='{text_x}':y='{text_y}':fontsize={font_size}:"
         f"fontcolor={font_color}:bordercolor={stroke_color}:"
         f"borderw={int(template.get('stroke_width', 2))}:box=0"
     )
